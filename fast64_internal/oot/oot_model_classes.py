@@ -331,6 +331,8 @@ class OOTF3DContext(F3DContext):
         self.dlList = []  # in the order they are rendered
         self.isBillboard = False
         self.flipbooks = {}  # {(segment, draw layer) : TextureFlipbook}
+        self.isAnimSkinLimb = False # easier to read than checking if the data is None
+        self.animSkinData = None # data for the current animSkinLimb (is None if this is not an animSkinLimb)
 
         materialContext = createF3DMat(None, preset="oot_shaded_solid")
         # materialContext.f3d_mat.rdp_settings.g_mdsft_cycletype = "G_CYC_1CYCLE"

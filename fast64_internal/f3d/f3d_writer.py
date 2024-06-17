@@ -769,6 +769,7 @@ class F3DVert:
         rgb: Optional[Vector],
         normal: Optional[Vector],
         alpha: float,
+        weight: float = 1.0, # default is 1, used for OoT's SkinLimbs, not used otherwise
     ):
         self.position: Vector = position
         self.uv: Vector = uv
@@ -776,6 +777,7 @@ class F3DVert:
         self.rgb: Optional[Vector] = rgb
         self.normal: Optional[Vector] = normal
         self.alpha: float = alpha
+        self.weight: float = weight
 
     def __eq__(self, other):
         if not isinstance(other, F3DVert):

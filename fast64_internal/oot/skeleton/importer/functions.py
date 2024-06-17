@@ -164,25 +164,28 @@ def ootBuildSkeleton(
         limbName = f3dContext.getLimbName(dlEntry.limbIndex)
         boneName = f3dContext.getBoneName(dlEntry.limbIndex)
         f3dContext.animSkinData = None
+        f3dContext.isAnimSkinLimb = False
 
         if dlEntry.skinLimb:
+            f3dContext.isAnimSkinLimb = True
             f3dContext.animSkinData = ootGetSkinAnimLimbData(skeletonData, dlEntry.dlName, False)
-            dlEntry.dlName = f3dContext.animSkinData.group(4)
-        else:
-            parseF3D(
-                skeletonData,
-                dlEntry.dlName,
-                f3dContext.matrixData[limbName],
-                limbName,
-                boneName,
-                "oot",
-                drawLayer,
-                f3dContext,
-                True,
-            )
+            dlEntry.dlName = f3dContext.animSkinData.group(4) 
+            dlEntry.dlName = "gEponaUnusedWhiteCubeDL"
+        
+        parseF3D(
+            skeletonData,
+            dlEntry.dlName,
+            f3dContext.matrixData[limbName],
+            limbName,
+            boneName,
+            "oot",
+            drawLayer,
+            f3dContext,
+            True,
+        )
         if f3dContext.isBillboard:
             armatureObj.data.bones[boneName].ootBone.dynamicTransform.billboard = True
-    f3dContext.createMesh(obj, removeDoubles, importNormals, False)
+    f3dContext.createMesh(obj, removeDoubles, importNormals, False, useSkinLimbs) 
     armatureObj.location = bpy.context.scene.cursor.location
 
     # Set bone rotation mode.

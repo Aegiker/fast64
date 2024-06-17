@@ -21,6 +21,7 @@ from .f3d_material_helpers import F3DMaterial_UpdateLock
 if TYPE_CHECKING:
     from .f3d_material import RDPSettings
 
+import random
 
 colorCombinationCommands = [
     0x03,  # load lighting data
@@ -729,6 +730,8 @@ class F3DContext:
         # 	return
         for i in range(len(verts)):
             vert = verts[i]
+
+            print(vert.f3dVert.weight)
 
             # NOTE: The groupIndex here does NOT correspond to a vertex group, but to the name of the limb (c variable)
             if vert.groupIndex not in self.limbGroups:
@@ -1819,7 +1822,7 @@ class F3DContext:
             raise PluginError("Attempting to delete material context that is None.")
 
     # if deleteMaterialContext is False, then manually call self.deleteMaterialContext() later.
-    def createMesh(self, obj, removeDoubles, importNormals, callDeleteMaterialContext: bool):
+    def createMesh(self, obj, removeDoubles, importNormals, callDeleteMaterialContext: bool, importWeights: bool):
         mesh = obj.data
         if len(self.verts) % 3 != 0:
             print(len(self.verts))
@@ -1828,6 +1831,8 @@ class F3DContext:
         triangleCount = int(len(self.verts) / 3)
         verts = [f3dVert.position for f3dVert in self.verts]
         faces = [[3 * i + j for j in range(3)] for i in range(triangleCount)]
+        if importWeights:
+            weights = [f3dVert.weight for f3dVert in self.verts]
         print("Vertices: " + str(len(self.verts)) + ", Triangles: " + str(triangleCount))
 
         mesh.from_pydata(vertices=verts, edges=[], faces=faces)
@@ -1843,7 +1848,12 @@ class F3DContext:
 
         for groupName, indices in self.limbGroups.items():
             group = obj.vertex_groups.new(name=self.limbToBoneName[groupName])
-            group.add(indices, 1, "REPLACE")
+            if importWeights:
+                for vert in indices:
+                    group.add([vert], weights[vert], "REPLACE")
+            else:
+                group.add(indices, 1, "REPLACE")
+                
 
         for i in range(len(mesh.polygons)):
             mesh.polygons[i].material_index = self.triMatIndices[i]
@@ -2267,7 +2277,9 @@ def importMeshC(
     drawLayer: str,
     f3dContext: F3DContext,
     callClearMaterial: bool = True,
+    importWeights: bool = False,
 ) -> bpy.types.Object:
+
     mesh = bpy.data.meshes.new(name + "_mesh")
     obj = bpy.data.objects.new(name + "_mesh", mesh)
     bpy.context.collection.objects.link(obj)
@@ -2276,7 +2288,7 @@ def importMeshC(
     transformMatrix = mathutils.Matrix.Scale(1 / scale, 4)
 
     parseF3D(data, name, transformMatrix, name, name, "oot", drawLayer, f3dContext, True)
-    f3dContext.createMesh(obj, removeDoubles, importNormals, callClearMaterial)
+    f3dContext.createMesh(obj, removeDoubles, importNormals, callClearMaterial, importWeights)
 
     applyRotation([obj], math.radians(-90), "X")
     return obj
