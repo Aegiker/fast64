@@ -81,9 +81,24 @@ def ootGetLimb(skeletonData, limbName, continueOnError):
             raise PluginError("Cannot handle skeleton limb named " + limbName + " of type " + limbType)
     return matchResult
 
-def ootGetAnimSkinLimb(structName, continueOnError): #unfinished
-    return
-    #raise PluginError("Cannot find struct " + structName)
+def ootGetSkinAnimLimbData(skeletonData, dataName, continueOnError): 
+    structName = "Struct_800A5E28" # in case it gets renamed in ZAPD
+    matchResult = re.search(
+        structName + 
+        "\s*(?!&)[" +
+        dataName +
+        "]*\s*=\s*\{\s*([^,\s]*)\s*,\s*([^,\s]*),\s*([^,\s]*)\s*,\s*([^,\s]*)\s*\}\s*;\s*",
+        skeletonData,
+        re.DOTALL
+    )
+
+    if matchResult is None:
+        if continueOnError:
+            return None
+        else:
+            raise PluginError("Cannot locate data " + dataName + " of type " + typeName)
+
+    return matchResult
 
 def getGroupIndexOfVert(vert, armatureObj, obj, rootGroupIndex):
     actualGroups = []

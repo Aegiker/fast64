@@ -8,13 +8,14 @@ from ...oot_utility import ootGetObjectPath, getOOTScale
 from ...oot_texture_array import ootReadTextureArrays
 from ..constants import ootSkeletonImportDict
 from ..properties import OOTSkeletonImportSettings
-from ..utility import ootGetLimb, ootGetLimbs, ootGetAnimSkinLimb, ootGetSkeleton, applySkeletonRestPose
+from ..utility import ootGetLimb, ootGetLimbs, ootGetSkinAnimLimbData, ootGetSkeleton, applySkeletonRestPose
 
 
 class OOTDLEntry:
-    def __init__(self, dlName, limbIndex):
+    def __init__(self, dlName, limbIndex, animSkinLimb):
         self.dlName = dlName
         self.limbIndex = limbIndex
+        self.skinLimb = animSkinLimb
 
 
 def ootAddBone(armatureObj, boneName, parentBoneName, currentTransform, loadDL):
@@ -62,6 +63,7 @@ def ootAddLimbRecursively(
 ):
     limbName = f3dContext.getLimbName(limbIndex)
     boneName = f3dContext.getBoneName(limbIndex)
+    skinLimbType = 0
     matchResult = ootGetLimb(skeletonData, limbName, False)
 
     isLOD = matchResult.lastindex > 6 and not useSkinLimbs
@@ -96,10 +98,6 @@ def ootAddLimbRecursively(
     currentTransform = parentTransform @ mathutils.Matrix.Translation(mathutils.Vector(translation))
     f3dContext.matrixData[limbName] = currentTransform
 
-    if skinLimbType == 4 and useSkinLimbs and dlName != "NULL": #dlName shouldn't be NULL because type 4 uses this as a pointer to SkinAnimatedLimbData struct, but we check just in case
-        animSkinLimbMatchResult = ootGetAnimSkinLimb(dlName, False)
-        dlName = "NULL"
-
     loadDL = dlName != "NULL"
 
     ootAddBone(armatureObj, boneName, parentBoneName, currentTransform, loadDL)
@@ -107,7 +105,7 @@ def ootAddLimbRecursively(
     # DLs can access bone transforms not yet processed.
     # Therefore were delay F3D parsing until after skeleton is processed.
     if loadDL:
-        f3dContext.dlList.append(OOTDLEntry(dlName, limbIndex))
+        f3dContext.dlList.append(OOTDLEntry(dlName, limbIndex, skinLimbType == 4))
 
     if nextChildIndex != LIMB_DONE:
         isLOD |= ootAddLimbRecursively(
@@ -165,17 +163,23 @@ def ootBuildSkeleton(
     for dlEntry in f3dContext.dlList:
         limbName = f3dContext.getLimbName(dlEntry.limbIndex)
         boneName = f3dContext.getBoneName(dlEntry.limbIndex)
-        parseF3D(
-            skeletonData,
-            dlEntry.dlName,
-            f3dContext.matrixData[limbName],
-            limbName,
-            boneName,
-            "oot",
-            drawLayer,
-            f3dContext,
-            True,
-        )
+        f3dContext.animSkinData = None
+
+        if dlEntry.skinLimb:
+            f3dContext.animSkinData = ootGetSkinAnimLimbData(skeletonData, dlEntry.dlName, False)
+            dlEntry.dlName = f3dContext.animSkinData.group(4)
+        else:
+            parseF3D(
+                skeletonData,
+                dlEntry.dlName,
+                f3dContext.matrixData[limbName],
+                limbName,
+                boneName,
+                "oot",
+                drawLayer,
+                f3dContext,
+                True,
+            )
         if f3dContext.isBillboard:
             armatureObj.data.bones[boneName].ootBone.dynamicTransform.billboard = True
     f3dContext.createMesh(obj, removeDoubles, importNormals, False)
