@@ -731,8 +731,6 @@ class F3DContext:
         for i in range(len(verts)):
             vert = verts[i]
 
-            print(vert.f3dVert.weight)
-
             # NOTE: The groupIndex here does NOT correspond to a vertex group, but to the name of the limb (c variable)
             if vert.groupIndex not in self.limbGroups:
                 self.limbGroups[vert.groupIndex] = []

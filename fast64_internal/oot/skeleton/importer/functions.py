@@ -69,7 +69,7 @@ def ootAddLimbRecursively(
     isLOD = matchResult.lastindex > 6 and not useSkinLimbs
 
     if useSkinLimbs:
-        skinLimbType = hexOrDecInt(matchResult.group(6))
+        skinLimbType = hexOrDecInt(matchResult.group(6)) # Only 4 and 11 are documented, but Epona also has 0 and 5 which seemingly do nothing at all-- needs more investigation.
         dlName = matchResult.group(7)
     elif isLOD and useFarLOD:
         dlName = matchResult.group(7)
