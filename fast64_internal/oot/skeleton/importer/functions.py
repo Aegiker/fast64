@@ -8,7 +8,7 @@ from ...oot_utility import ootGetObjectPath, getOOTScale
 from ...oot_texture_array import ootReadTextureArrays
 from ..constants import ootSkeletonImportDict
 from ..properties import OOTSkeletonImportSettings
-from ..utility import ootGetLimb, ootGetLimbs, ootGetSkeleton, applySkeletonRestPose
+from ..utility import ootGetLimb, ootGetLimbs, ootGetAnimSkinLimb, ootGetSkeleton, applySkeletonRestPose
 
 
 class OOTDLEntry:
@@ -58,14 +58,18 @@ def ootAddLimbRecursively(
     parentBoneName: str,
     f3dContext: OOTF3DContext,
     useFarLOD: bool,
+    useSkinLimbs: bool,
 ):
     limbName = f3dContext.getLimbName(limbIndex)
     boneName = f3dContext.getBoneName(limbIndex)
     matchResult = ootGetLimb(skeletonData, limbName, False)
 
-    isLOD = matchResult.lastindex > 6
+    isLOD = matchResult.lastindex > 6 and not useSkinLimbs
 
-    if isLOD and useFarLOD:
+    if useSkinLimbs:
+        skinLimbType = hexOrDecInt(matchResult.group(6))
+        dlName = matchResult.group(7)
+    elif isLOD and useFarLOD:
         dlName = matchResult.group(7)
     else:
         dlName = matchResult.group(6)
@@ -91,6 +95,11 @@ def ootAddLimbRecursively(
 
     currentTransform = parentTransform @ mathutils.Matrix.Translation(mathutils.Vector(translation))
     f3dContext.matrixData[limbName] = currentTransform
+
+    if skinLimbType == 4 and useSkinLimbs and dlName != "NULL": #dlName shouldn't be NULL because type 4 uses this as a pointer to SkinAnimatedLimbData struct, but we check just in case
+        animSkinLimbMatchResult = ootGetAnimSkinLimb(dlName, False)
+        dlName = "NULL"
+
     loadDL = dlName != "NULL"
 
     ootAddBone(armatureObj, boneName, parentBoneName, currentTransform, loadDL)
@@ -102,12 +111,12 @@ def ootAddLimbRecursively(
 
     if nextChildIndex != LIMB_DONE:
         isLOD |= ootAddLimbRecursively(
-            nextChildIndex, skeletonData, obj, armatureObj, currentTransform, boneName, f3dContext, useFarLOD
+            nextChildIndex, skeletonData, obj, armatureObj, currentTransform, boneName, f3dContext, useFarLOD, useSkinLimbs
         )
 
     if nextSiblingIndex != LIMB_DONE:
         isLOD |= ootAddLimbRecursively(
-            nextSiblingIndex, skeletonData, obj, armatureObj, parentTransform, parentBoneName, f3dContext, useFarLOD
+            nextSiblingIndex, skeletonData, obj, armatureObj, parentTransform, parentBoneName, f3dContext, useFarLOD, useSkinLimbs
         )
 
     return isLOD
@@ -120,6 +129,7 @@ def ootBuildSkeleton(
     actorScale,
     removeDoubles,
     importNormals,
+    useSkinLimbs,
     useFarLOD,
     basePath,
     drawLayer,
@@ -151,7 +161,7 @@ def ootBuildSkeleton(
         ootReadTextureArrays(basePath, overlayName, skeletonName, f3dContext, isLink, flipbookArrayIndex2D)
 
     transformMatrix = mathutils.Matrix.Scale(1 / actorScale, 4)
-    isLOD = ootAddLimbRecursively(0, skeletonData, obj, armatureObj, transformMatrix, None, f3dContext, useFarLOD)
+    isLOD = ootAddLimbRecursively(0, skeletonData, obj, armatureObj, transformMatrix, None, f3dContext, useFarLOD, useSkinLimbs)
     for dlEntry in f3dContext.dlList:
         limbName = f3dContext.getLimbName(dlEntry.limbIndex)
         boneName = f3dContext.getBoneName(dlEntry.limbIndex)
@@ -220,6 +230,7 @@ def ootImportSkeletonC(basePath: str, importSettings: OOTSkeletonImportSettings)
 
     removeDoubles = importSettings.removeDoubles
     importNormals = importSettings.importNormals
+    useSkinLimbs = importSettings.useSkinLimbs
     drawLayer = importSettings.drawLayer
 
     skeletonData = getImportData(filepaths)
@@ -249,6 +260,7 @@ def ootImportSkeletonC(basePath: str, importSettings: OOTSkeletonImportSettings)
         actorScale,
         removeDoubles,
         importNormals,
+        useSkinLimbs,
         False,
         basePath,
         drawLayer,
@@ -264,6 +276,7 @@ def ootImportSkeletonC(basePath: str, importSettings: OOTSkeletonImportSettings)
             actorScale,
             removeDoubles,
             importNormals,
+            useSkinLimbs,
             True,
             basePath,
             drawLayer,

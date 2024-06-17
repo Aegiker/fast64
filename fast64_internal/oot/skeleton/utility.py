@@ -57,7 +57,9 @@ def ootGetLimb(skeletonData, limbName, continueOnError):
             raise PluginError("Cannot find skeleton limb named " + limbName)
 
     limbType = matchResult.group(1)
-    if limbType == "Lod":
+    if limbType == "Skin":
+        dlRegex = "([^, ]*)\s*,\s*([^,\s]*)"
+    elif limbType == "Lod":
         dlRegex = "\{\s*([^,\s]*)\s*,\s*([^,\s]*)\s*\}"
     else:
         dlRegex = "([^,\s]*)"
@@ -79,6 +81,9 @@ def ootGetLimb(skeletonData, limbName, continueOnError):
             raise PluginError("Cannot handle skeleton limb named " + limbName + " of type " + limbType)
     return matchResult
 
+def ootGetAnimSkinLimb(structName, continueOnError): #unfinished
+    return
+    #raise PluginError("Cannot find struct " + structName)
 
 def getGroupIndexOfVert(vert, armatureObj, obj, rootGroupIndex):
     actualGroups = []
