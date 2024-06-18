@@ -405,14 +405,7 @@ class OOTF3DContext(F3DContext):
             return name
         else:
             if (self.isAnimSkinLimb): # Do Skin Limb stuff
-                print(f"gsSPVertex({name}, {num}, {start}),")
-                segmentOffset = pointer & 0x00FFFFFF
-                if (segmentOffset % 0x10): # Check if the offset makes sense
-                    raise PluginError(f"Segment offset {name} not aligned with sizeof(Vtx)")
-
-                vtxDataName = f"Segment{pointer >> 24}VtxData"
-                ootProcessSkinVertexData(self, dlData, vtxDataName) # Vertex data is saved as "Segment0XVtxData" and parsed once
-                ootAddSkinVertexData(self, num, start, vtxDataName, int(segmentOffset / 0x10))
+                ootParseAnimatedLimb(self, pointer, num, start, dlData)
             else:
                 raise PluginError("Vertex data is in a segment and cannot be parsed") # Someone could add support for assigning a segment to a bone, but that's a really dangerous idea
             return None
@@ -527,6 +520,16 @@ def clearOOTFlipbookProperty(flipbookProp):
     flipbookProp.exportMode = "Array"
     flipbookProp.textures.clear()
 
+def ootParseAnimatedLimb(f3dContext: OOTF3DContext, pointer: int, num: int, start: int, dlData):
+    print(f"gsSPVertex({pointer}, {num}, {start}),")
+    segmentOffset = pointer & 0x00FFFFFF
+    if (segmentOffset % 0x10): # Check if the offset makes sense
+        raise PluginError(f"Segment offset not aligned with sizeof(Vtx)")
+
+    vtxDataName = f"Segment{pointer >> 24}VtxData"
+    ootProcessSkinVertexData(f3dContext, dlData, vtxDataName) # Vertex data is saved as "Segment0XVtxData" and parsed once
+    ootAddSkinVertexData(f3dContext, num, start, vtxDataName, int(segmentOffset / 0x10))
+
 # function could be moved
 def ootProcessSkinVertexData(f3dContext: OOTF3DContext, dlData, vertexDataName):
     if vertexDataName in f3dContext.vertexData:
@@ -545,6 +548,7 @@ def ootProcessSkinVertexData(f3dContext: OOTF3DContext, dlData, vertexDataName):
                 Vector((random.randrange(30, 30000, 1), random.randrange(30, 30000, 1), random.randrange(30, 30000, 1))),
                 unpackNormal(random.randrange(30, 32000, 1)),
                 random.randrange(1, 250, 1),
+                weight=random.randrange(1, 100, 1) * 0.01, # weight
             )
         )
         i += 1

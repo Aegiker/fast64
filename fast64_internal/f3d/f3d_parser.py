@@ -647,6 +647,7 @@ class F3DContext:
         mat = self.mat()
         f3dVert = bufferVert.f3dVert
         position = transform @ Vector(f3dVert.position)
+        weight = f3dVert.weight
         if mat.tex0.tex is not None:
             texDimensions = mat.tex0.tex.size
         elif mat.tex0.use_tex_reference:
@@ -673,7 +674,7 @@ class F3DContext:
             normal = (transform.inverted().transposed() @ normal).normalized()
 
         # NOTE: The groupIndex here does NOT correspond to a vertex group, but to the name of the limb (c variable)
-        return BufferVertex(F3DVert(position, uv, rgb, normal, alpha), bufferVert.groupIndex, bufferVert.materialIndex)
+        return BufferVertex(F3DVert(position, uv, rgb, normal, alpha, weight), bufferVert.groupIndex, bufferVert.materialIndex)
 
     def addVertices(self, num, start, vertexDataName, vertexDataOffset):
         vertexData = self.vertexData[vertexDataName]
