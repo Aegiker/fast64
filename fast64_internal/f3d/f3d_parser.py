@@ -698,7 +698,7 @@ class F3DContext:
                 f"attemped read from ({vertexDataOffset}, {vertexDataOffset + count})"
             )
         for i in range(count):
-            self.vertexBuffer[start + i] = BufferVertex(vertexData[vertexDataOffset + i], self.currentTransformName, 0)
+            self.vertexBuffer[start + i] = BufferVertex(vertexData[vertexDataOffset + i], self.currentTransformName, 0) # Group Index is set here. Constructor takes both int and string, but only strings work
 
     def addTriangle(self, indices, dlData):
         if self.materialChanged:
@@ -1846,7 +1846,7 @@ class F3DContext:
 
         for groupName, indices in self.limbGroups.items():
             group = obj.vertex_groups.new(name=self.limbToBoneName[groupName])
-            if importWeights:
+            if importWeights: # Set the weights for each vertex, if there is a reason to do so
                 for vert in indices:
                     group.add([vert], weights[vert], "REPLACE")
             else:
