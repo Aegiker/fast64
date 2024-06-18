@@ -82,7 +82,7 @@ def ootGetLimb(skeletonData, limbName, continueOnError):
     return matchResult
 
 def ootGetSkinAnimLimbData(skeletonData, dataName, continueOnError): 
-    structName = "Struct_800A5E28" # in case it gets renamed in ZAPD
+    structName = "Struct_800A5E28" # SkinAnimatedLimbData
     matchResult = re.search(
         structName + 
         "\s*(?!&)[" +

@@ -5,7 +5,7 @@ from ..f3d.f3d_parser import F3DContext, F3DTextureReference, getImportData, mat
 from ..f3d.f3d_material import TextureProperty, createF3DMat, texFormatOf, texBitSizeF3D
 from ..utility import PluginError, CData, hexOrDecInt, getNameFromPath, getTextureSuffixFromFormat, toAlnum, unpackNormal, readFile #readFile is TEMPORARY it will not be needed when I am done
 from ..f3d.flipbook import TextureFlipbook, FlipbookProperty, usesFlipbook, ootFlipbookReferenceIsValid
-from .oot_utility import ootGetArrayCount, ootCaptureData
+from .oot_utility import ootGetArrayCount, captureData
 
 import random #TEMPORARY!
 
@@ -405,8 +405,12 @@ class OOTF3DContext(F3DContext):
         except:
             return name
         else:
+            print(f"gsSPVertex({pointer}, {num}, {start}),")
             if (self.isAnimSkinLimb): # Do Skin Limb stuff
-                ootParseAnimatedLimb(self, pointer, num, start, dlData)
+                if ((pointer & 0x00FFFFFF) % 0x10): # Check if the offset makes sense
+                    raise PluginError(f"Segment offset not aligned with sizeof(Vtx)")
+                else:
+                    ootParseAnimatedLimb(self, pointer, num, start, dlData)
             else:
                 raise PluginError("Vertex data is in a segment and cannot be parsed") # Someone could add support for assigning a segment to a bone, but that's a really dangerous idea
             return None
@@ -521,32 +525,92 @@ def clearOOTFlipbookProperty(flipbookProp):
     flipbookProp.exportMode = "Array"
     flipbookProp.textures.clear()
 
+
+# Skin Skeleton classes, could probably be simplified
+
+class SkinVertex:
+    def __init__(
+        self,
+        index: int,
+        s: int,
+        t: int,
+        normX: int,
+        normY: int,
+        normZ: int,
+        alpha: int,
+    ):
+        self.index = index
+        self.s = s
+        self.t = t
+        self.normX = normX
+        self.normY = normY
+        self.normZ = normZ
+        self.alpha = alpha
+
+class SkinTransformation:
+    def __init__(
+        self,
+        limbIndex: int,
+        x: int,
+        y: int,
+        z: int,
+        scale: int,
+    ):
+        self.limbIndex = limbIndex
+        self.x = x
+        self.y = y
+        self.z = z
+        self.scale = scale
+
+class SkinLimbModif:
+    def __init__(
+        self,
+        vtxCount: int,
+        transformCount: int,
+        unk_4: int,
+        skinVertices: list[SkinVertex] = [],
+        limbTransformations: list[SkinTransformation] = [],
+    ):
+        self.vtxCount = vtxCount
+        self.transformCount = transformCount
+        self.unk_4 = unk_4
+        self.skinVertices = skinVertices
+        self.limbTransformations = limbTransformations     
+
+class SkinAnimatedLimbData:
+    def __init__(
+        self,
+        totalVtxCount: int = 0,
+        limbModifCount: int = 0,
+        limbModifications: list[SkinLimbModif] = [],
+        dList: str = "",
+    ):
+        self.totalVtxCount = totalVtxCount
+        self.limbModifCount = limbModifCount
+        self.limbModifications = limbModifications
+        self.dList = dList
+
+    def populateLimbModifications(self, dlData, arrayName, structName, continueOnError):
+        arrayString = captureData(dlData, arrayName, structName, False)
+        print(arrayString)
+        
+
+
+# Skin Skeleton functions 
+
 def ootParseAnimatedLimb(f3dContext: OOTF3DContext, pointer: int, num: int, start: int, dlData):
+    skinAnimLimbData = SkinAnimatedLimbData(totalVtxCount=hexOrDecInt(f3dContext.animSkinLimbData.group(1)),dList=f3dContext.animSkinLimbData.group(4))
 
-    animLimbData = f3dContext.animSkinLimbData
+    limbModifCount = f3dContext.animSkinLimbData.group(2)
+    limbModifications = f3dContext.animSkinLimbData.group(3) #SkinLimbModif
 
-    totalVtxCount = hexOrDecInt(animLimbData.group(1))
-    limbModifCount = animLimbData.group(2)
-    limbModifications = animLimbData.group(3)
-    dlist = animLimbData.group(4)
+    skinAnimLimbData.populateLimbModifications(dlData, f3dContext.animSkinLimbData.group(3), "Struct_800A598C", False) # SkinLimbModif
 
-    ootCaptureData(dlData, "gEponaBodyLimbStruct_800A598C_00915C", "Struct_800A598C", False)
-
-    ootCaptureData(dlData, "gEponaJumpingAnim", "AnimationHeader", False)
-
-    print(f"u16 totalVtxCount = {totalVtxCount}\nu16 limbModifCount = {limbModifCount}\nSkinLimbModif* limbModifications = {limbModifications}\nGfx* dlist = {dlist}")
-
-
-    print(f"gsSPVertex({pointer}, {num}, {start}),")
-    segmentOffset = pointer & 0x00FFFFFF
-    if (segmentOffset % 0x10): # Check if the offset makes sense
-        raise PluginError(f"Segment offset not aligned with sizeof(Vtx)")
-
+    # unfinished stuff
     vtxDataName = f"Segment{pointer >> 24}VtxData"
     ootProcessSkinVertexData(f3dContext, dlData, vtxDataName) # Vertex data is saved as "Segment0XVtxData" and parsed once
-    ootAddSkinVertexData(f3dContext, num, start, vtxDataName, int(segmentOffset / 0x10))
+    ootAddSkinVertexData(f3dContext, num, start, vtxDataName, int((pointer & 0x00FFFFFF) / 0x10))
 
-# function could be moved
 def ootProcessSkinVertexData(f3dContext: OOTF3DContext, dlData, vertexDataName):
     if vertexDataName in f3dContext.vertexData:
         return f3dContext.vertexData[vertexDataName]
@@ -573,7 +637,6 @@ def ootProcessSkinVertexData(f3dContext: OOTF3DContext, dlData, vertexDataName):
 
     return f3dContext.vertexData[vertexDataName]
 
-# function could be moved
 def ootAddSkinVertexData(f3dContext: OOTF3DContext, num, start, vertexDataName, vertexDataOffset):
     vertexData = f3dContext.vertexData[vertexDataName]
 
