@@ -6,6 +6,8 @@ from ..f3d.f3d_material import TextureProperty, createF3DMat, texFormatOf, texBi
 from ..utility import PluginError, CData, hexOrDecInt, getNameFromPath, getTextureSuffixFromFormat, toAlnum, unpackNormal, readFile #readFile is TEMPORARY it will not be needed when I am done
 from ..f3d.flipbook import TextureFlipbook, FlipbookProperty, usesFlipbook, ootFlipbookReferenceIsValid
 
+import random #TEMPORARY!
+
 from ..f3d.f3d_writer import VertexGroupInfo, TriangleConverterInfo, F3DVert, BufferVertex
 from ..f3d.f3d_texture_writer import (
     getColorsUsedInImage,
@@ -403,10 +405,14 @@ class OOTF3DContext(F3DContext):
             return name
         else:
             if (self.isAnimSkinLimb): # Do Skin Limb stuff
-                tempName = "object_horseVtx_00A580"
+                print(f"gsSPVertex({name}, {num}, {start}),")
                 segmentOffset = pointer & 0x00FFFFFF
-                ootProcessSkinVertexData(self, dlData, tempName)
-                ootAddSkinVertexData(self, num, start, tempName, 0) #TODO offset was index into array of verts, for this it would be segmentOffset / sizeof(Vtx) probably
+                if (segmentOffset % 0x10): # Check if the offset makes sense
+                    raise PluginError(f"Segment offset {name} not aligned with sizeof(Vtx)")
+
+                vtxDataName = f"Segment{pointer >> 24}VtxData"
+                ootProcessSkinVertexData(self, dlData, vtxDataName) # Vertex data is saved as "Segment0XVtxData" and parsed once
+                ootAddSkinVertexData(self, num, start, vtxDataName, int(segmentOffset / 0x10))
             else:
                 raise PluginError("Vertex data is in a segment and cannot be parsed") # Someone could add support for assigning a segment to a bone, but that's a really dangerous idea
             return None
@@ -526,39 +532,23 @@ def ootProcessSkinVertexData(f3dContext: OOTF3DContext, dlData, vertexDataName):
     if vertexDataName in f3dContext.vertexData:
         return f3dContext.vertexData[vertexDataName]
 
-    matchResult = re.search(
-        r"Vtx\s*" + re.escape(vertexDataName) + r"\s*\[\s*[0-9x]*\s*\]\s*=\s*\{([^;]*);", dlData, re.DOTALL
-    )
-    if matchResult is None:
-        raise PluginError("Cannot find vertex list named " + vertexDataName)
-    data = matchResult.group(1)
-
-    pathMatch = re.search(r'\#include\s*"([^"]*)"', data)
-    if pathMatch is not None:
-        path = pathMatch.group(1)
-        data = readFile(f3dContext.getVTXPathFromInclude(path))
-
     f3d = f3dContext.f3d
-    patterns = f3dContext.vertexFormatPatterns(data)
     vertexData = []
-    for pattern in patterns:
-        # For this step, store rgb/normal as rgb and packed normal as normal.
-        for match in re.finditer(pattern, data, re.DOTALL):
-            values = [math_eval(g, f3d) for g in match.groups()]
-            if len(values) == 9:
-                # A format without the flag / packed normal
-                values = values[0:3] + [0] + values[3:9]
-            vertexData.append(
-                F3DVert(
-                    Vector(values[0:3]),
-                    Vector(values[4:6]),
-                    Vector(values[6:9]),
-                    unpackNormal(values[3]),
-                    values[9],
-                )
+    
+    # literally random vertices because I'm not finished parsing the data yet
+    i = 0
+    while i < 374:
+        vertexData.append(
+            F3DVert(
+                Vector((random.randrange(30, 30000, 1), random.randrange(30, 30000, 1), random.randrange(30, 30000, 1))),
+                Vector((random.randrange(30, 30000, 1), random.randrange(30, 30000, 1), random.randrange(30, 30000, 1))),
+                Vector((random.randrange(30, 30000, 1), random.randrange(30, 30000, 1), random.randrange(30, 30000, 1))),
+                unpackNormal(random.randrange(30, 32000, 1)),
+                random.randrange(1, 250, 1),
             )
-        if len(vertexData) > 0:
-            break
+        )
+        i += 1
+
     f3dContext.vertexData[vertexDataName] = vertexData
 
     return f3dContext.vertexData[vertexDataName]
@@ -570,6 +560,8 @@ def ootAddSkinVertexData(f3dContext: OOTF3DContext, num, start, vertexDataName, 
     # TODO: material index not important?
     count = math_eval(num, f3dContext.f3d)
     start = math_eval(start, f3dContext.f3d)
+
+    print(f"attempted read from {vertexDataOffset} to {vertexDataOffset + count}")
 
     if start + count > len(f3dContext.vertexBuffer):
         raise PluginError(
