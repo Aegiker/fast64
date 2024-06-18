@@ -5,6 +5,7 @@ from ..f3d.f3d_parser import F3DContext, F3DTextureReference, getImportData, mat
 from ..f3d.f3d_material import TextureProperty, createF3DMat, texFormatOf, texBitSizeF3D
 from ..utility import PluginError, CData, hexOrDecInt, getNameFromPath, getTextureSuffixFromFormat, toAlnum, unpackNormal, readFile #readFile is TEMPORARY it will not be needed when I am done
 from ..f3d.flipbook import TextureFlipbook, FlipbookProperty, usesFlipbook, ootFlipbookReferenceIsValid
+from .oot_utility import ootGetArrayCount, ootCaptureData
 
 import random #TEMPORARY!
 
@@ -521,6 +522,21 @@ def clearOOTFlipbookProperty(flipbookProp):
     flipbookProp.textures.clear()
 
 def ootParseAnimatedLimb(f3dContext: OOTF3DContext, pointer: int, num: int, start: int, dlData):
+
+    animLimbData = f3dContext.animSkinLimbData
+
+    totalVtxCount = hexOrDecInt(animLimbData.group(1))
+    limbModifCount = animLimbData.group(2)
+    limbModifications = animLimbData.group(3)
+    dlist = animLimbData.group(4)
+
+    ootCaptureData(dlData, "gEponaBodyLimbStruct_800A598C_00915C", "Struct_800A598C", False)
+
+    ootCaptureData(dlData, "gEponaJumpingAnim", "AnimationHeader", False)
+
+    print(f"u16 totalVtxCount = {totalVtxCount}\nu16 limbModifCount = {limbModifCount}\nSkinLimbModif* limbModifications = {limbModifications}\nGfx* dlist = {dlist}")
+
+
     print(f"gsSPVertex({pointer}, {num}, {start}),")
     segmentOffset = pointer & 0x00FFFFFF
     if (segmentOffset % 0x10): # Check if the offset makes sense

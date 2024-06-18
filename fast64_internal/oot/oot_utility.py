@@ -940,3 +940,22 @@ def getNewPath(type: str, isClosedShape: bool):
     bpy.context.view_layer.active_layer_collection.collection.objects.link(newPath)
 
     return newPath
+
+# from ARRAY_COUNT or ARRAY_UCOUNT
+def ootGetArrayCount(data, prompt, continueOnError):
+    matchResult = re.search("([^(]*)\(([^\)]+)\)", prompt, re.DOTALL)
+
+# retrieve the contents of requested data of type with name. Retrieves information between a curly bracket "{" and curly bracket and semicolon "};"
+# group 0 (the capture) will be the entire data including its name, group 1 will be the contents
+def ootCaptureData(data, name, structType, continueOnError):
+
+    # can't reliably assume that the size of an array is defined in the brackets (it never is) so this is pointless
+    #matchResult = re.search(structType + "\s\s*" + name + "\[(.*?)\]\s*=\s*\{(.*?)\};", data, re.DOTALL)
+
+    matchResult = re.search(structType + "\s\s*" + name + "\[*\]*\s*=\s*\{(.*?)\};", data, re.DOTALL)
+
+    if matchResult is None:
+        raise PluginError(data)
+    
+    print(f"data: {matchResult.group(1)}")
+
