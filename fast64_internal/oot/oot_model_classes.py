@@ -1,6 +1,6 @@
 import bpy, os, re, mathutils
 from typing import Union
-from mathutils import Vector
+from mathutils import Vector, Matrix
 from ..f3d.f3d_parser import F3DContext, F3DTextureReference, getImportData, math_eval
 from ..f3d.f3d_material import TextureProperty, createF3DMat, texFormatOf, texBitSizeF3D
 from ..utility import PluginError, CData, hexOrDecInt, getNameFromPath, getTextureSuffixFromFormat, toAlnum, unpackNormal, readFile #readFile is TEMPORARY it will not be needed when I am done
@@ -405,7 +405,6 @@ class OOTF3DContext(F3DContext):
         except:
             return name
         else:
-            print(f"gsSPVertex({pointer}, {num}, {start}),")
             if (self.isAnimSkinLimb): # Do Skin Limb stuff
                 if ((pointer & 0x00FFFFFF) % 0x10): # Check if the offset makes sense
                     raise PluginError(f"Segment offset not aligned with sizeof(Vtx)")
@@ -578,24 +577,31 @@ class SkinLimbModif:
         self.limbTransformations = limbTransformations  
 
     def populateSkinLimbModif(self, dlData, skinVertices, limbTransformations):
+        # vertices
         self.vtxCount = 0
         vtxArrayString = captureData(dlData, skinVertices, "Struct_800A57C0", False) # SkinVertex
-        for match in re.finditer("\{\s*([^,\s]*)\s*,\s*([^,\s]*)\s*,\s*([^,\s]*)\s*,\s*([^,\s]*)\s*,\s*([^,\s]*)\s*,\s*([^,\s]*)\s*,\s*([^,\s]*)[\s,]*},", vtxArrayString):
+        vtxData = []
+        for vtxMatch in re.finditer("\{\s*([^,\s]*)\s*,\s*([^,\s]*)\s*,\s*([^,\s]*)\s*,\s*([^,\s]*)\s*,\s*([^,\s]*)\s*,\s*([^,\s]*)\s*,\s*([^,\s]*)[\s,]*},", vtxArrayString):
             self.vtxCount += 1 #self.vtxCount = ARRAY_COUNTU(skinVertices)
-            self.skinVertices.append(SkinVertex(
-                hexOrDecInt(match.group(1)), hexOrDecInt(match.group(2)), hexOrDecInt(match.group(3)), 
-                hexOrDecInt(match.group(4)), hexOrDecInt(match.group(5)), hexOrDecInt(match.group(6)), 
-                hexOrDecInt(match.group(7)),
+            vtxData.append(SkinVertex(
+                hexOrDecInt(vtxMatch.group(1)), hexOrDecInt(vtxMatch.group(2)), hexOrDecInt(vtxMatch.group(3)), 
+                hexOrDecInt(vtxMatch.group(4)), hexOrDecInt(vtxMatch.group(5)), hexOrDecInt(vtxMatch.group(6)), 
+                hexOrDecInt(vtxMatch.group(7)),
                 ))
 
+        self.skinVertices = vtxData
+
+        # limb transformations
         self.transformCount = 0
         limbTransformArrayString = captureData(dlData, limbTransformations, "Struct_800A598C_2", False) # SkinTransformation
-        for match in re.finditer("\{\s*([^,\s]*)\s*,\s*([^,\s]*)\s*,\s*([^,\s]*)\s*,\s*([^,\s]*)\s*,\s*([^,\s]*)[\s,]*},", limbTransformArrayString):
+        transformData = []
+        for transformMatch in re.finditer("\{\s*([^,\s]*)\s*,\s*([^,\s]*)\s*,\s*([^,\s]*)\s*,\s*([^,\s]*)\s*,\s*([^,\s]*)[\s,]*},", limbTransformArrayString):
             self.transformCount += 1 #self.transformCount = ARRAY_COUNTU(limbTransformations)
-            self.limbTransformations.append(SkinTransformation(
-                hexOrDecInt(match.group(1)), hexOrDecInt(match.group(2)), hexOrDecInt(match.group(3)), 
-                hexOrDecInt(match.group(4)), hexOrDecInt(match.group(5)),
+            transformData.append(SkinTransformation(
+                hexOrDecInt(transformMatch.group(1)), hexOrDecInt(transformMatch.group(2)), hexOrDecInt(transformMatch.group(3)), 
+                hexOrDecInt(transformMatch.group(4)), hexOrDecInt(transformMatch.group(5)),
                 ))
+        self.limbTransformations = transformData
 
 class SkinAnimatedLimbData:
     def __init__(
@@ -621,18 +627,57 @@ class SkinAnimatedLimbData:
             self.limbModifCount += 1 #ARRAY_COUNT(arrayName)
 
 # Skin Skeleton functions 
+    
+def ootRetrieveMatrix(f3dContext: OOTF3DContext, limbIndex: int):
+    matrixName = f3dContext.getLimbName(limbIndex)
+    if matrixName in f3dContext.matrixData:
+        return f3dContext.matrixData[matrixName]
+    else:
+        print(f3dContext.matrixData)
+        raise PluginError("Transform matrix not specified for " + matrixName)
 
 def ootParseAnimatedLimb(f3dContext: OOTF3DContext, pointer: int, num: int, start: int, dlData):
-    skinAnimLimbData = SkinAnimatedLimbData(totalVtxCount=hexOrDecInt(f3dContext.animSkinLimbData.group(1)),dList=f3dContext.animSkinLimbData.group(4))
-
-    limbModifCount = f3dContext.animSkinLimbData.group(2)
-    limbModifications = f3dContext.animSkinLimbData.group(3) #SkinLimbModif
-
-    skinAnimLimbData.populateLimbModifications(dlData, f3dContext.animSkinLimbData.group(3), False) # SkinLimbModif
-
-    # unfinished stuff
+    # Name the vertex data after the segment it is referencing (ex. Segment8VtxData)
     vtxDataName = f"Segment{pointer >> 24}VtxData"
-    ootProcessSkinVertexData(f3dContext, dlData, vtxDataName) # Vertex data is saved as "Segment0XVtxData" and parsed once
+
+    # Create vertices if not already existing
+    if vtxDataName not in f3dContext.vertexData:
+        print(f"Creating object for SkinAnimatedLimbData")
+        # Create "skinAnimLimbData" object representing the original SkinAnimatedLimbData struct
+        skinAnimLimbData = SkinAnimatedLimbData(totalVtxCount=hexOrDecInt(f3dContext.animSkinLimbData.group(1)),dList=f3dContext.animSkinLimbData.group(4))
+        # Populate skinAnimLimbData with its items
+        skinAnimLimbData.populateLimbModifications(dlData, f3dContext.animSkinLimbData.group(3), False)
+        # skinAnimLimbData is now a functional copy of the original SkinAnimatedLimbData data
+
+        for modif in skinAnimLimbData.limbModifications:
+            transformCount = modif.transformCount
+            skinVertices = modif.skinVertices
+            limbTransformations = modif.limbTransformations
+
+            if transformCount == 1:
+                vertex = Vector((limbTransformations[0].x, limbTransformations[0].y, limbTransformations[0].z))
+                #matrix = ootRetrieveMatrix(f3dContext, limbTransformations[0].limbIndex)
+
+            # OoT has an optional argument used by the draw call for this condition, but because there is no draw function, it is currently always true. Maybe there could be a checkbox?
+            # Epona has this always true except when stateFlags & ENHORSE_JUMPING
+            elif True:
+                transformationEntry = limbTransformations[modif.unk_4]
+                vertex = Vector((transformationEntry.x, transformationEntry.y, transformationEntry.z))
+                #matrix = ootRetrieveMatrix(f3dContext, transformationEntry.limbIndex)
+            else:
+                phi_f20 = Vector((0, 0, 0))
+                for transformEntry in limbTransformations:
+                    scale = transformEntry.scale * 0.01
+                    sp88 = Vector((transformEntry.x, transformEntry.y, transformEntry.z))
+                    #matrix = ootRetrieveMatrix(f3dContext, transformationEntry.limbIndex)
+
+                    # let's go out on a limb here and just try something
+                    
+
+        
+
+
+    ootProcessSkinVertexData(f3dContext, dlData, vtxDataName)
     ootAddSkinVertexData(f3dContext, num, start, vtxDataName, int((pointer & 0x00FFFFFF) / 0x10))
 
 def ootProcessSkinVertexData(f3dContext: OOTF3DContext, dlData, vertexDataName):
@@ -667,8 +712,6 @@ def ootAddSkinVertexData(f3dContext: OOTF3DContext, num, start, vertexDataName, 
     # TODO: material index not important?
     count = math_eval(num, f3dContext.f3d)
     start = math_eval(start, f3dContext.f3d)
-
-    print(f"attempted read from {vertexDataOffset} to {vertexDataOffset + count}")
 
     if start + count > len(f3dContext.vertexBuffer):
         raise PluginError(
