@@ -698,7 +698,7 @@ class F3DContext:
                 f"attemped read from ({vertexDataOffset}, {vertexDataOffset + count})"
             )
         for i in range(count):
-            self.vertexBuffer[start + i] = BufferVertex(vertexData[vertexDataOffset + i], self.currentTransformName, 0) # Group Index is set here. Constructor takes both int and string, but only strings work
+            self.vertexBuffer[start + i] = BufferVertex(vertexData[vertexDataOffset + i], self.currentTransformName, 0) # Constructor takes both int and string, but only strings work
 
     def addTriangle(self, indices, dlData):
         if self.materialChanged:
@@ -1541,9 +1541,11 @@ class F3DContext:
 
             # print(command.name + " " + str(command.params))
             if command.name == "gsSPVertex":
-                vertexDataName, vertexDataOffset = getVertexDataStart(command.params[0], self.f3d)
-                parseVertexData(dlData, vertexDataName, self)
-                self.addVertices(command.params[1], command.params[2], vertexDataName, vertexDataOffset)
+                newParam0 = self.processVertexDataName(command.params[0], dlData, command.params[1], command.params[2])
+                if newParam0 is not None:
+                    vertexDataName, vertexDataOffset = getVertexDataStart(newParam0, self.f3d)
+                    parseVertexData(dlData, vertexDataName, self)
+                    self.addVertices(command.params[1], command.params[2], vertexDataName, vertexDataOffset)
             elif command.name == "gsSPMatrix":
                 self.setCurrentTransform(command.params[0], command.params[1])
             elif command.name == "gsSPPopMatrix":
@@ -1811,6 +1813,13 @@ class F3DContext:
     # override this to handle game specific DL calls.
     # return None to indicate DL call should be skipped.
     def processDLName(self, name: str) -> Optional[str]:
+        return name
+
+    # override this to handle game specific vertex calls.
+    # return None to indicate vertex call should be skipped.
+    # Don't do this unless you intend to substitute this data in the vertex buffer
+    # Otherwise parsing the triangle (ex. gsSP2Triangles) afterwards will cause undefined behavior
+    def processVertexDataName(self, name: str) -> Optional[str]:
         return name
 
     def deleteMaterialContext(self):

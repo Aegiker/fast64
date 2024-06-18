@@ -177,11 +177,12 @@ def ootBuildSkeleton(
     for dlEntry in f3dContext.dlList:
         limbName = f3dContext.getLimbName(dlEntry.limbIndex)
         boneName = f3dContext.getBoneName(dlEntry.limbIndex)
-        f3dContext.isAnimSkinLimb = False
+        f3dContext.isAnimSkinLimb = dlEntry.skinLimb
+        f3dContext.animSkinLimbData = None
 
-        if dlEntry.skinLimb:
-            f3dContext.isAnimSkinLimb = True
-            dlEntry.dlName = "gEponaUnusedWhiteCubeDL"
+        if f3dContext.isAnimSkinLimb:
+            f3dContext.animSkinLimbData = ootGetSkinAnimLimbData(skeletonData, dlEntry.dlName, False)
+            dlEntry.dlName = f3dContext.animSkinLimbData.group(4)
         
         parseF3D(
             skeletonData,

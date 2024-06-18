@@ -1,11 +1,12 @@
 import bpy, os, re, mathutils
 from typing import Union
-from ..f3d.f3d_parser import F3DContext, F3DTextureReference, getImportData
+from mathutils import Vector
+from ..f3d.f3d_parser import F3DContext, F3DTextureReference, getImportData, math_eval
 from ..f3d.f3d_material import TextureProperty, createF3DMat, texFormatOf, texBitSizeF3D
-from ..utility import PluginError, CData, hexOrDecInt, getNameFromPath, getTextureSuffixFromFormat, toAlnum
+from ..utility import PluginError, CData, hexOrDecInt, getNameFromPath, getTextureSuffixFromFormat, toAlnum, unpackNormal, readFile #readFile is TEMPORARY it will not be needed when I am done
 from ..f3d.flipbook import TextureFlipbook, FlipbookProperty, usesFlipbook, ootFlipbookReferenceIsValid
 
-from ..f3d.f3d_writer import VertexGroupInfo, TriangleConverterInfo
+from ..f3d.f3d_writer import VertexGroupInfo, TriangleConverterInfo, F3DVert, BufferVertex
 from ..f3d.f3d_texture_writer import (
     getColorsUsedInImage,
     mergePalettes,
@@ -332,7 +333,7 @@ class OOTF3DContext(F3DContext):
         self.isBillboard = False
         self.flipbooks = {}  # {(segment, draw layer) : TextureFlipbook}
         self.isAnimSkinLimb = False # easier to read than checking if the data is None
-        self.animSkinVertexBuffer = None # Vertex buffer for verts mapped to segment 08 by the animated skin limb
+        self.animSkinLimbData = None
 
         materialContext = createF3DMat(None, preset="oot_shaded_solid")
         # materialContext.f3d_mat.rdp_settings.g_mdsft_cycletype = "G_CYC_1CYCLE"
@@ -392,6 +393,22 @@ class OOTF3DContext(F3DContext):
                 setattr(self.materialContext.ootMaterial.opaque, "segment" + format(segment, "1X"), True)
                 setattr(self.materialContext.ootMaterial.transparent, "segment" + format(segment, "1X"), True)
                 self.materialChanged = True
+            return None
+        return name
+
+    def processVertexDataName(self, name, dlData, num, start):
+        try:
+            pointer = hexOrDecInt(name)
+        except:
+            return name
+        else:
+            if (self.isAnimSkinLimb): # Do Skin Limb stuff
+                tempName = "object_horseVtx_00A580"
+                segmentOffset = pointer & 0x00FFFFFF
+                ootProcessSkinVertexData(self, dlData, tempName)
+                ootAddSkinVertexData(self, num, start, tempName, 0) #TODO offset was index into array of verts, for this it would be segmentOffset / sizeof(Vtx) probably
+            else:
+                raise PluginError("Vertex data is in a segment and cannot be parsed") # Someone could add support for assigning a segment to a bone, but that's a really dangerous idea
             return None
         return name
 
@@ -498,9 +515,76 @@ class OOTF3DContext(F3DContext):
         else:
             super().handleApplyTLUT(material, texProp, tlut, index)
 
-
 def clearOOTFlipbookProperty(flipbookProp):
     flipbookProp.enable = False
     flipbookProp.name = "sFlipbookTextures"
     flipbookProp.exportMode = "Array"
     flipbookProp.textures.clear()
+
+# function could be moved
+def ootProcessSkinVertexData(f3dContext: OOTF3DContext, dlData, vertexDataName):
+    if vertexDataName in f3dContext.vertexData:
+        return f3dContext.vertexData[vertexDataName]
+
+    matchResult = re.search(
+        r"Vtx\s*" + re.escape(vertexDataName) + r"\s*\[\s*[0-9x]*\s*\]\s*=\s*\{([^;]*);", dlData, re.DOTALL
+    )
+    if matchResult is None:
+        raise PluginError("Cannot find vertex list named " + vertexDataName)
+    data = matchResult.group(1)
+
+    pathMatch = re.search(r'\#include\s*"([^"]*)"', data)
+    if pathMatch is not None:
+        path = pathMatch.group(1)
+        data = readFile(f3dContext.getVTXPathFromInclude(path))
+
+    f3d = f3dContext.f3d
+    patterns = f3dContext.vertexFormatPatterns(data)
+    vertexData = []
+    for pattern in patterns:
+        # For this step, store rgb/normal as rgb and packed normal as normal.
+        for match in re.finditer(pattern, data, re.DOTALL):
+            values = [math_eval(g, f3d) for g in match.groups()]
+            if len(values) == 9:
+                # A format without the flag / packed normal
+                values = values[0:3] + [0] + values[3:9]
+            vertexData.append(
+                F3DVert(
+                    Vector(values[0:3]),
+                    Vector(values[4:6]),
+                    Vector(values[6:9]),
+                    unpackNormal(values[3]),
+                    values[9],
+                )
+            )
+        if len(vertexData) > 0:
+            break
+    f3dContext.vertexData[vertexDataName] = vertexData
+
+    return f3dContext.vertexData[vertexDataName]
+
+# function could be moved
+def ootAddSkinVertexData(f3dContext: OOTF3DContext, num, start, vertexDataName, vertexDataOffset):
+    vertexData = f3dContext.vertexData[vertexDataName]
+
+    # TODO: material index not important?
+    count = math_eval(num, f3dContext.f3d)
+    start = math_eval(start, f3dContext.f3d)
+
+    if start + count > len(f3dContext.vertexBuffer):
+        raise PluginError(
+            "Vertex buffer of size "
+            + str(len(f3dContext.vertexBuffer))
+            + " too small, attempting load into "
+            + str(start)
+            + ", "
+            + str(start + count)
+        )
+    if vertexDataOffset + count > len(vertexData):
+        raise PluginError(
+            f"Attempted to read vertex data out of bounds.\n"
+            f"{vertexDataName} is of size {len(vertexData)}, "
+            f"attemped read from ({vertexDataOffset}, {vertexDataOffset + count})"
+        )
+    for i in range(count):
+        f3dContext.vertexBuffer[start + i] = BufferVertex(vertexData[vertexDataOffset + i], f3dContext.currentTransformName, 0) # Constructor takes both int and string, but only strings work
