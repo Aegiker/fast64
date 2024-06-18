@@ -955,7 +955,7 @@ def captureData(data, name, structType, continueOnError):
     matchResult = re.search(structType + "\s\s*" + name + "\[*\]*\s*=\s*\{(.*?)\};", data, re.DOTALL)
 
     if matchResult is None:
-        raise PluginError(data)
+        raise PluginError(f"could not locate {structType} {name}")
     
     return matchResult.group(1)
 

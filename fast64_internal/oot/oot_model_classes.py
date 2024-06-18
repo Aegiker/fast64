@@ -565,9 +565,9 @@ class SkinTransformation:
 class SkinLimbModif:
     def __init__(
         self,
-        vtxCount: int,
-        transformCount: int,
-        unk_4: int,
+        vtxCount: int = 0,
+        transformCount: int = 0,
+        unk_4: int = 0,
         skinVertices: list[SkinVertex] = [],
         limbTransformations: list[SkinTransformation] = [],
     ):
@@ -575,7 +575,27 @@ class SkinLimbModif:
         self.transformCount = transformCount
         self.unk_4 = unk_4
         self.skinVertices = skinVertices
-        self.limbTransformations = limbTransformations     
+        self.limbTransformations = limbTransformations  
+
+    def populateSkinLimbModif(self, dlData, skinVertices, limbTransformations):
+        self.vtxCount = 0
+        vtxArrayString = captureData(dlData, skinVertices, "Struct_800A57C0", False) # SkinVertex
+        for match in re.finditer("\{\s*([^,\s]*)\s*,\s*([^,\s]*)\s*,\s*([^,\s]*)\s*,\s*([^,\s]*)\s*,\s*([^,\s]*)\s*,\s*([^,\s]*)\s*,\s*([^,\s]*)[\s,]*},", vtxArrayString):
+            self.vtxCount += 1 #self.vtxCount = ARRAY_COUNTU(skinVertices)
+            self.skinVertices.append(SkinVertex(
+                hexOrDecInt(match.group(1)), hexOrDecInt(match.group(2)), hexOrDecInt(match.group(3)), 
+                hexOrDecInt(match.group(4)), hexOrDecInt(match.group(5)), hexOrDecInt(match.group(6)), 
+                hexOrDecInt(match.group(7)),
+                ))
+
+        self.transformCount = 0
+        limbTransformArrayString = captureData(dlData, limbTransformations, "Struct_800A598C_2", False) # SkinTransformation
+        for match in re.finditer("\{\s*([^,\s]*)\s*,\s*([^,\s]*)\s*,\s*([^,\s]*)\s*,\s*([^,\s]*)\s*,\s*([^,\s]*)[\s,]*},", limbTransformArrayString):
+            self.transformCount += 1 #self.transformCount = ARRAY_COUNTU(limbTransformations)
+            self.limbTransformations.append(SkinTransformation(
+                hexOrDecInt(match.group(1)), hexOrDecInt(match.group(2)), hexOrDecInt(match.group(3)), 
+                hexOrDecInt(match.group(4)), hexOrDecInt(match.group(5)),
+                ))
 
 class SkinAnimatedLimbData:
     def __init__(
@@ -590,11 +610,15 @@ class SkinAnimatedLimbData:
         self.limbModifications = limbModifications
         self.dList = dList
 
-    def populateLimbModifications(self, dlData, arrayName, structName, continueOnError):
-        arrayString = captureData(dlData, arrayName, structName, False)
-        print(arrayString)
+    def populateLimbModifications(self, dlData, arrayName, continueOnError): # 135
+        arrayString = captureData(dlData, arrayName, "Struct_800A598C", False)
         
-
+        self.limbModifCount = 0
+        for match in re.finditer("\{\s*([^,\s]*)\s*,\s*([^,\s]*)\s*,\s*([^,\s]*)\s*,\s*([^,\s]*)\s*,\s*([^,\s]*)[\s,]*},", arrayString):
+            curModif = SkinLimbModif(unk_4=hexOrDecInt(match.group(3)))
+            curModif.populateSkinLimbModif(dlData, match.group(4), match.group(5))
+            self.limbModifications.append(curModif)
+            self.limbModifCount += 1 #ARRAY_COUNT(arrayName)
 
 # Skin Skeleton functions 
 
@@ -604,7 +628,7 @@ def ootParseAnimatedLimb(f3dContext: OOTF3DContext, pointer: int, num: int, star
     limbModifCount = f3dContext.animSkinLimbData.group(2)
     limbModifications = f3dContext.animSkinLimbData.group(3) #SkinLimbModif
 
-    skinAnimLimbData.populateLimbModifications(dlData, f3dContext.animSkinLimbData.group(3), "Struct_800A598C", False) # SkinLimbModif
+    skinAnimLimbData.populateLimbModifications(dlData, f3dContext.animSkinLimbData.group(3), False) # SkinLimbModif
 
     # unfinished stuff
     vtxDataName = f"Segment{pointer >> 24}VtxData"
