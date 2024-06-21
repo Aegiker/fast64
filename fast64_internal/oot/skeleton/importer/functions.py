@@ -105,7 +105,7 @@ def ootAddLimbRecursively(
 
     loadDL = dlName != "NULL"
 
-    ootAddBone(armatureObj, boneName, parentBoneName, currentTransform, loadDL or (useSkinLimbs and (skinLimbType == 0))) # skin type 0 bones should deform even though they don't have a DL
+    ootAddBone(armatureObj, boneName, parentBoneName, currentTransform, loadDL or (useSkinLimbs)) # skin type 0 bones should deform even though they don't have a DL
 
     # DLs can access bone transforms not yet processed.
     # Therefore were delay F3D parsing until after skeleton is processed.

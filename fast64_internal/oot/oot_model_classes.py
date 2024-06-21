@@ -1,5 +1,5 @@
 import bpy, os, re, mathutils
-from typing import Union
+from typing import Union, Optional
 from mathutils import Vector, Matrix
 from ..f3d.f3d_parser import F3DContext, F3DTextureReference, getImportData, math_eval
 from ..f3d.f3d_material import TextureProperty, createF3DMat, texFormatOf, texBitSizeF3D
@@ -9,7 +9,7 @@ from .oot_utility import ootGetArrayCount, captureData
 
 import random #TEMPORARY!
 
-from ..f3d.f3d_writer import VertexGroupInfo, TriangleConverterInfo, F3DVert, BufferVertex
+from ..f3d.f3d_writer import VertexGroupInfo, TriangleConverterInfo, F3DVert, BufferVertex, VertexWeight
 from ..f3d.f3d_texture_writer import (
     getColorsUsedInImage,
     mergePalettes,
@@ -626,6 +626,20 @@ class SkinAnimatedLimbData:
             self.limbModifications.append(curModif)
             self.limbModifCount += 1 #ARRAY_COUNT(arrayName)
 
+class SkinF3DVert(F3DVert):
+    def __init__(
+        self,
+        position: Vector,
+        uv: Vector,
+        rgb: Optional[Vector],
+        normal: Optional[Vector],
+        alpha: float,
+        weights: list[VertexWeight], # not optional for this
+        modif: SkinLimbModif,
+    ):
+        F3DVert.__init__(self, position, uv, rgb, normal, alpha, weights)
+        self.modif = modif
+
 # Skin Skeleton functions 
     
 def ootRetrieveMatrix(f3dContext: OOTF3DContext, limbIndex: int):
@@ -639,6 +653,7 @@ def ootRetrieveMatrix(f3dContext: OOTF3DContext, limbIndex: int):
 def ootParseAnimatedLimb(f3dContext: OOTF3DContext, pointer: int, num: int, start: int, dlData):
     # Name the vertex data after the segment it is referencing (ex. Segment8VtxData)
     vtxDataName = f"Segment{pointer >> 24}VtxData"
+    vertexCount = 0
 
     # Create vertices if not already existing
     if vtxDataName not in f3dContext.vertexData:
@@ -649,62 +664,71 @@ def ootParseAnimatedLimb(f3dContext: OOTF3DContext, pointer: int, num: int, star
         skinAnimLimbData.populateLimbModifications(dlData, f3dContext.animSkinLimbData.group(3), False)
         # skinAnimLimbData is now a functional copy of the original SkinAnimatedLimbData data
 
+        vertexData = [None] * skinAnimLimbData.totalVtxCount
+
         for modif in skinAnimLimbData.limbModifications:
             transformCount = modif.transformCount
             skinVertices = modif.skinVertices
             limbTransformations = modif.limbTransformations
+            vtxPoint = Vector((0, 0, 0))
+            weightData = []
+
+
+
 
             if transformCount == 1:
-                vertex = Vector((limbTransformations[0].x, limbTransformations[0].y, limbTransformations[0].z))
-                #matrix = ootRetrieveMatrix(f3dContext, limbTransformations[0].limbIndex)
-
+                vtxPoint = Vector((limbTransformations[0].x, limbTransformations[0].y, limbTransformations[0].z))
             # OoT has an optional argument used by the draw call for this condition, but because there is no draw function, it is currently always true. Maybe there could be a checkbox?
             # Epona has this always true except when stateFlags & ENHORSE_JUMPING
             elif True:
                 transformationEntry = limbTransformations[modif.unk_4]
-                vertex = Vector((transformationEntry.x, transformationEntry.y, transformationEntry.z))
-                #matrix = ootRetrieveMatrix(f3dContext, transformationEntry.limbIndex)
+                vtxPoint = Vector((transformationEntry.x, transformationEntry.y, transformationEntry.z))
             else:
-                phi_f20 = Vector((0, 0, 0))
                 for transformEntry in limbTransformations:
                     scale = transformEntry.scale * 0.01
-                    sp88 = Vector((transformEntry.x, transformEntry.y, transformEntry.z))
-                    #matrix = ootRetrieveMatrix(f3dContext, transformationEntry.limbIndex)
+                    vtxPoint.x += transformEntry.x * scale
+                    vtxPoint.y += transformEntry.y * scale
+                    vtxPoint.z += transformEntry.z * scale
 
-                    # let's go out on a limb here and just try something
+
+
+
+
                     
+            for transformEntry in limbTransformations:
+                weightData.append(VertexWeight(transformEntry.limbIndex, transformEntry.scale * 0.01))
+            
+            for skinVertex in skinVertices:
+                vertexData[skinVertex.index] = SkinF3DVert(
+                    Vector((vtxPoint.x, vtxPoint.y, vtxPoint.z)),
+                    Vector((random.randrange(30, 30000, 1), random.randrange(30, 30000, 1), random.randrange(30, 30000, 1))),
+                    Vector((random.randrange(30, 30000, 1), random.randrange(30, 30000, 1), random.randrange(30, 30000, 1))),
+                    Vector((skinVertex.normX, skinVertex.normY, skinVertex.normZ)),
+                    random.randrange(1, 250, 1),
+                    weightData,
+                    modif,
+                )
+                vertexCount += 1
+
+                #position: Vector,
+                #uv: Vector,
+                #rgb: Optional[Vector],
+                #normal: Optional[Vector],
+                #alpha: float,
+                #weight: float = 1.0,
+            print(f"\n\nVERTEX COUNT: {vertexCount}\n\n")
+
+        f3dContext.vertexData[vtxDataName] = vertexData
+
+            
+
+            
 
         
 
 
-    ootProcessSkinVertexData(f3dContext, dlData, vtxDataName)
     ootAddSkinVertexData(f3dContext, num, start, vtxDataName, int((pointer & 0x00FFFFFF) / 0x10))
 
-def ootProcessSkinVertexData(f3dContext: OOTF3DContext, dlData, vertexDataName):
-    if vertexDataName in f3dContext.vertexData:
-        return f3dContext.vertexData[vertexDataName]
-
-    f3d = f3dContext.f3d
-    vertexData = []
-    
-    # literally random vertices because I'm not finished parsing the data yet
-    i = 0
-    while i < 374:
-        vertexData.append(
-            F3DVert(
-                Vector((random.randrange(30, 30000, 1), random.randrange(30, 30000, 1), random.randrange(30, 30000, 1))),
-                Vector((random.randrange(30, 30000, 1), random.randrange(30, 30000, 1), random.randrange(30, 30000, 1))),
-                Vector((random.randrange(30, 30000, 1), random.randrange(30, 30000, 1), random.randrange(30, 30000, 1))),
-                unpackNormal(random.randrange(30, 32000, 1)),
-                random.randrange(1, 250, 1),
-                weight=random.randrange(1, 100, 1) * 0.01, # weight
-            )
-        )
-        i += 1
-
-    f3dContext.vertexData[vertexDataName] = vertexData
-
-    return f3dContext.vertexData[vertexDataName]
 
 def ootAddSkinVertexData(f3dContext: OOTF3DContext, num, start, vertexDataName, vertexDataOffset):
     vertexData = f3dContext.vertexData[vertexDataName]
@@ -729,4 +753,6 @@ def ootAddSkinVertexData(f3dContext: OOTF3DContext, num, start, vertexDataName, 
             f"attemped read from ({vertexDataOffset}, {vertexDataOffset + count})"
         )
     for i in range(count):
-        f3dContext.vertexBuffer[start + i] = BufferVertex(vertexData[vertexDataOffset + i], f3dContext.currentTransformName, 0) # Constructor takes both int and string, but only strings work
+        modif = vertexData[vertexDataOffset + i].modif
+        matrixLimbIndex = modif.limbTransformations[modif.unk_4].limbIndex
+        f3dContext.vertexBuffer[start + i] = BufferVertex(vertexData[vertexDataOffset + i], f3dContext.getLimbName(matrixLimbIndex), 0) # Constructor takes both int and string, but only strings work

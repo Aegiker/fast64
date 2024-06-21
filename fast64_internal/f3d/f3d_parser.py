@@ -647,7 +647,7 @@ class F3DContext:
         mat = self.mat()
         f3dVert = bufferVert.f3dVert
         position = transform @ Vector(f3dVert.position)
-        weight = f3dVert.weight
+        weights = f3dVert.weights
         if mat.tex0.tex is not None:
             texDimensions = mat.tex0.tex.size
         elif mat.tex0.use_tex_reference:
@@ -674,7 +674,7 @@ class F3DContext:
             normal = (transform.inverted().transposed() @ normal).normalized()
 
         # NOTE: The groupIndex here does NOT correspond to a vertex group, but to the name of the limb (c variable)
-        return BufferVertex(F3DVert(position, uv, rgb, normal, alpha, weight), bufferVert.groupIndex, bufferVert.materialIndex)
+        return BufferVertex(F3DVert(position, uv, rgb, normal, alpha, weights), bufferVert.groupIndex, bufferVert.materialIndex)
 
     def addVertices(self, num, start, vertexDataName, vertexDataOffset):
         vertexData = self.vertexData[vertexDataName]
@@ -1840,7 +1840,7 @@ class F3DContext:
         verts = [f3dVert.position for f3dVert in self.verts]
         faces = [[3 * i + j for j in range(3)] for i in range(triangleCount)]
         if importWeights:
-            weights = [f3dVert.weight for f3dVert in self.verts]
+            weights = [f3dVert.weights for f3dVert in self.verts]
         print("Vertices: " + str(len(self.verts)) + ", Triangles: " + str(triangleCount))
 
         mesh.from_pydata(vertices=verts, edges=[], faces=faces)
@@ -1854,13 +1854,30 @@ class F3DContext:
                 mesh.use_auto_smooth = True
             mesh.normals_split_custom_set([f3dVert.normal for f3dVert in self.verts])
 
-        for groupName, indices in self.limbGroups.items():
+        for groupName, indices in self.limbGroups.items(): 
             group = obj.vertex_groups.new(name=self.limbToBoneName[groupName])
-            if importWeights: # Set the weights for each vertex, if there is a reason to do so
+            if importWeights: # Don't add weighted verts to the group because they will be added to multiple groups after they have all been created by this loop.
                 for vert in indices:
-                    group.add([vert], weights[vert], "REPLACE")
+                    if weights[vert] == None:
+                        group.add([vert], 1, "REPLACE")
             else:
                 group.add(indices, 1, "REPLACE")
+
+        if importWeights:
+            # check vertices
+            for vertIndex, vertex in enumerate(self.verts):
+                # has weights
+                if vertex.weights != None:
+                    # each weight
+                    for weight in vertex.weights:
+                        boneName = self.limbToBoneName[self.getLimbName(weight.limbIndex)] # relies on getLimbName being an existing method which is only present in OOTF3DContext
+                        if boneName not in obj.vertex_groups:
+                            print(f"Vertex {vertIndex} has weights for limb {weight.limbIndex}, nonexistent vertex group {boneName}")
+                            obj.vertex_groups.new(name = boneName)
+                        vtxGroup = obj.vertex_groups[boneName]
+                        vtxGroup.add([vertIndex], weight.weight, 'REPLACE')
+                        
+
                 
 
         for i in range(len(mesh.polygons)):

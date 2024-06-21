@@ -96,7 +96,7 @@ def ootGetSkinAnimLimbData(skeletonData, dataName, continueOnError):
         if continueOnError:
             return None
         else:
-            raise PluginError("Cannot locate data " + dataName + " of type " + typeName)
+            raise PluginError("Cannot locate data " + dataName + " of type " + structName)
 
     return matchResult
 

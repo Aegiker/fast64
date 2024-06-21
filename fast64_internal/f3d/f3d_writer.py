@@ -760,6 +760,14 @@ def getNewIndices(existingIndices, bufferStart):
             newIndices.append(index)
     return newIndices
 
+class VertexWeight:
+    def __init__(
+        self,
+        limbIndex: int,
+        weight: float,
+    ):
+        self.limbIndex: int = limbIndex
+        self.weight: float = weight
 
 class F3DVert:
     def __init__(
@@ -769,7 +777,7 @@ class F3DVert:
         rgb: Optional[Vector],
         normal: Optional[Vector],
         alpha: float,
-        weight: float = 1.0, # default is 1, used for OoT's SkinLimbs, not used otherwise
+        weights: list[VertexWeight] = None,
     ):
         self.position: Vector = position
         self.uv: Vector = uv
@@ -777,7 +785,7 @@ class F3DVert:
         self.rgb: Optional[Vector] = rgb
         self.normal: Optional[Vector] = normal
         self.alpha: float = alpha
-        self.weight: float = weight
+        self.weights: list[VertexWeight] = weights
 
     def __eq__(self, other):
         if not isinstance(other, F3DVert):
